@@ -11,6 +11,15 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Rarity;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import dev.itsastronuts.cobbleupgrader.net.NetSession;
+import dev.itsastronuts.cobbleupgrader.net.Payloads;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -33,6 +42,10 @@ public class CobbleUpgrader implements ModInitializer {
     public static final String MOD_ID = "cobbleupgrader";
     public static final Logger LOGGER = LoggerFactory.getLogger("Cobble Upgrader");
 
+    public static final Item UPGRADER = Registry.register(BuiltInRegistries.ITEM,
+            ResourceLocation.fromNamespaceAndPath(MOD_ID, "upgrader"),
+            new UpgraderItem(new Item.Properties().stacksTo(1).rarity(Rarity.EPIC)));
+
     private static final List<UpgraderMenu> OPEN = new ArrayList<>();
     private static final Map<UUID, Long> LAST_SPIN = new HashMap<>();
 
@@ -46,8 +59,13 @@ public class CobbleUpgrader implements ModInitializer {
     @Override
     public void onInitialize() {
         UpgraderConfig.load();
+        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(entries -> entries.accept(UPGRADER));
+        Payloads.register();
+        NetSession.register();
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> NetSession.close(handler.getPlayer()));
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> register(dispatcher));
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            NetSession.tickAll();
             for (UpgraderMenu menu : new ArrayList<>(OPEN)) {
                 try {
                     menu.tick();
@@ -61,6 +79,7 @@ public class CobbleUpgrader implements ModInitializer {
                 menu.finishNow();
             }
             OPEN.clear();
+            NetSession.finishAll();
         });
         LOGGER.info("Cobble Upgrader ready. Open it in game with /upgrader");
     }
@@ -86,7 +105,12 @@ public class CobbleUpgrader implements ModInitializer {
                                                 .executes(ctx -> openWithTarget(ctx, IntegerArgumentType.getInteger(ctx, "level"), true)))))));
     }
 
-    private static int open(ServerPlayer player) {
+    public static int open(ServerPlayer player) {
+        // Players with the mod get the custom screen; everyone else gets the chest screen.
+        if (!UpgraderConfig.get().alwaysUseChestScreen && NetSession.canUse(player)) {
+            NetSession.open(player);
+            return 1;
+        }
         player.openMenu(new SimpleMenuProvider(
                 (id, inventory, who) -> new UpgraderMenu(id, inventory, player),
                 Component.literal("Cobble Upgrader")));

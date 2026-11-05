@@ -9,6 +9,17 @@ base {
     archivesName = project.archives_base_name
 }
 
+loom {
+    // Client-only code (the custom screen) lives in src/client so the server never loads it.
+    splitEnvironmentSourceSets()
+    mods {
+        cobbleupgrader {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
 repositories {
     mavenCentral()
     // Cobblemon's official maven

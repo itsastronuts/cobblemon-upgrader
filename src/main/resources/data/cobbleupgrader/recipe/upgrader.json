@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "GPG",
+    "PDP",
+    "GPG"
+  ],
+  "key": {
+    "G": { "item": "minecraft:gold_ingot" },
+    "P": { "item": "cobblemon:poke_ball" },
+    "D": { "item": "minecraft:diamond_block" }
+  },
+  "result": {
+    "id": "cobbleupgrader:upgrader",
+    "count": 1
+  }
+}

@@ -29,6 +29,10 @@ public final class UpgraderConfig {
     public double minChance = 0.001;
     /** Highest possible chance, so betting something better than the target is never a free win. */
     public double maxChance = 0.9;
+    /** How long the wheel spins in the custom screen, in ticks (20 ticks = 1 second). */
+    public int spinTicks = 100;
+    /** Always use the chest screen, even for players who have the mod installed. */
+    public boolean alwaysUseChestScreen = false;
     /** Seconds a player must wait between spins. */
     public int cooldownSeconds = 3;
     /** Ask for a second click before a Pokémon is put at risk. */
@@ -38,7 +42,10 @@ public final class UpgraderConfig {
     /** Permission level needed for /upgrader (0 = everyone, 2 = operators). */
     public int commandPermissionLevel = 0;
     public boolean allowPokemonBets = true;
-    public boolean allowItemBets = true;
+    /** Let Pokémon from the PC be bet too (chest screen only). Off: party only. */
+    public boolean allowPcBets = false;
+    /** Let inventory items be bet (chest screen only). */
+    public boolean allowItemBets = false;
     public boolean allowPokemonTargets = true;
     public boolean allowItemTargets = true;
     public boolean allowShinyTargets = true;
@@ -122,6 +129,7 @@ public final class UpgraderConfig {
             minChance = maxChance;
         }
         cooldownSeconds = Math.max(0, cooldownSeconds);
+        spinTicks = Math.max(20, Math.min(600, spinTicks));
         commandPermissionLevel = Math.max(0, Math.min(4, commandPermissionLevel));
         minTargetLevel = Math.max(1, Math.min(100, minTargetLevel));
         maxTargetLevel = Math.max(minTargetLevel, Math.min(100, maxTargetLevel));

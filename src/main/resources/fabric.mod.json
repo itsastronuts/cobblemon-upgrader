@@ -3,7 +3,7 @@
   "id": "cobbleupgrader",
   "version": "${version}",
   "name": "Cobble Upgrader",
-  "description": "Gamble your items AND the Pokémon in your party or PC for a shot at something better. Open it with /upgrader.",
+  "description": "Bet the Pokémon in your party for a shot at something better. Open it with /upgrader.",
   "authors": ["itsastronuts"],
   "contact": {
     "sources": "https://github.com/itsastronuts/cobblemon-upgrader"
@@ -11,7 +11,8 @@
   "license": "MIT",
   "environment": "*",
   "entrypoints": {
-    "main": ["dev.itsastronuts.cobbleupgrader.CobbleUpgrader"]
+    "main": ["dev.itsastronuts.cobbleupgrader.CobbleUpgrader"],
+    "client": ["dev.itsastronuts.cobbleupgrader.client.CobbleUpgraderClient"]
   },
   "depends": {
     "fabricloader": ">=0.16.0",
