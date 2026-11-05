@@ -253,18 +253,32 @@ public class UpgraderScreen extends Screen {
         g.renderOutline(left + 1, top + 1, W - 2, H - 2, FRAME_HI);
         drawTitle(g);
 
-        boolean overlay = catalogOpen;
-        int mx = overlay ? -1000 : mouseX, my = overlay ? -1000 : mouseY;
+        // While the prize picker is open, draw only the picker: the main screen's Pokémon models and text
+        // would otherwise show through it.
+        if (catalogOpen) {
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 300);
+            Object hovered = drawCatalog(g, mouseX, mouseY);
+            search.render(g, mouseX, mouseY, delta);
+            g.pose().popPose();
+            if (hovered instanceof ItemStack stack) g.renderTooltip(font, stack, mouseX, mouseY);
+            else if (hovered instanceof List<?> list) {
+                @SuppressWarnings("unchecked") List<Component> lines = (List<Component>) list;
+                g.renderComponentTooltip(font, lines, mouseX, mouseY);
+            }
+            return;
+        }
+        int mx = mouseX, my = mouseY;
 
         // ---- Bet panel (left)
         int bx = left + 10, by = top + 24;
         drawPanel(g, bx, by);
         Payloads.PartyMon betMon = bet == null ? null : findMon(bet);
         if (spinning && !spinBetIcon.isEmpty()) {
-            drawScaledItem(g, spinBetIcon, bx + 45 - 24, by + 14, 3f);
+            drawClipped(g, spinBetIcon, bx + 45 - 24, by + 14, 3f, bx + 1, by + 1, bx + 89, by + 66);
             g.drawCenteredString(font, "In the wheel...", bx + 45, by + 70, MUTED);
         } else if (betMon != null) {
-            drawScaledItem(g, monIcon(betMon), bx + 45 - 24, by + 8, 3f);
+            drawClipped(g, monIcon(betMon), bx + 45 - 24, by + 8, 3f, bx + 1, by + 1, bx + 89, by + 58);
             String name = speciesName(betMon.species());
             g.drawCenteredString(font, fit(name, 84), bx + 45, by + 60, betMon.shiny() ? GOLD_TEXT : TEXT);
             g.drawCenteredString(font, "Lv " + betMon.level(), bx + 45, by + 71, MUTED);
@@ -292,7 +306,7 @@ public class UpgraderScreen extends Screen {
         drawPanel(g, tx, ty);
         if (targetKind >= 0) {
             ItemStack icon = targetIcon();
-            drawScaledItem(g, icon, tx + 45 - 16, ty + 6, 2f);
+            drawClipped(g, icon, tx + 45 - 16, ty + 6, 2f, tx + 1, ty + 1, tx + 75, ty + 40);
             g.drawCenteredString(font, fit(targetName(), 84), tx + 45, ty + 41, targetShiny ? GOLD_TEXT : TEXT);
             g.drawCenteredString(font, "Value: " + Values.format(targetValue()), tx + 45, ty + 51, GOLD_TEXT);
             g.drawCenteredString(font, targetKind == 0 ? "Level" : "Amount", tx + 45, ty + 62, MUTED);
@@ -347,7 +361,7 @@ public class UpgraderScreen extends Screen {
             g.fill(sx, sy, sx + 42, sy + 42, selected ? 0xFF3A2E12 : hover && mon != null ? 0xFF242B3B : SLOT);
             g.renderOutline(sx, sy, 42, 42, selected ? GOLD : blocked ? 0xFF5A2A30 : SLOT_EDGE);
             if (mon != null) {
-                drawScaledItem(g, monIcon(mon), sx + 5, sy + 3, 2f);
+                drawClipped(g, monIcon(mon), sx + 5, sy + 3, 2f, sx + 1, sy + 1, sx + 41, sy + 41);
                 g.drawString(font, "Lv" + mon.level(), sx + 3, sy + 32, blocked ? 0xFF9A6A6A : TEXT, true);
                 if (mon.shiny()) g.drawString(font, "★", sx + 34, sy + 3, GOLD_TEXT, true);
                 if (blocked) g.fill(sx + 1, sy + 1, sx + 41, sy + 41, 0x70100808);
@@ -358,17 +372,6 @@ public class UpgraderScreen extends Screen {
         // ---- Message line
         if (message != null && System.currentTimeMillis() - messageAt < 4000) {
             g.drawCenteredString(font, fit(message, W - 20), left + W / 2, top + H - 12, messageColor);
-        }
-
-        // ---- Catalog overlay
-        if (catalogOpen) {
-            Object hovered = drawCatalog(g, mouseX, mouseY);
-            search.render(g, mouseX, mouseY, delta);
-            if (hovered instanceof ItemStack stack) tooltipStack = stack;
-            else if (hovered instanceof List<?> list) {
-                @SuppressWarnings("unchecked") List<Component> lines = (List<Component>) list;
-                tooltip = lines;
-            }
         }
 
         if (!tooltipStack.isEmpty()) g.renderTooltip(font, tooltipStack, mouseX, mouseY);
@@ -509,7 +512,9 @@ public class UpgraderScreen extends Screen {
             g.fill(cx, cy, cx + cell - 2, cy + cell - 2, chosen ? 0xFF3A2E12 : hover ? 0xFF2C3446 : SLOT);
             if (hover || chosen) g.renderOutline(cx, cy, cell - 2, cell - 2, chosen ? GOLD : 0xFF4A556E);
             ItemStack icon = catalogTab == 0 ? speciesIcon(id, false) : new ItemStack(item(id));
+            g.enableScissor(cx, cy, cx + cell - 2, cy + cell - 2);
             g.renderItem(icon, cx + 1, cy + 1);
+            g.disableScissor();
             if (hover) {
                 if (catalogTab == 0) {
                     int index2 = data.species().indexOf(id);
@@ -548,6 +553,13 @@ public class UpgraderScreen extends Screen {
         g.fill(x, y, x + w, y + 14, active ? 0xFF3A2E12 : hover ? 0xFF2C3446 : 0xFF202636);
         g.renderOutline(x, y, w, 14, active ? GOLD : SLOT_EDGE);
         g.drawCenteredString(font, label, x + w / 2, y + 3, !enabled ? 0xFF555B6A : active ? GOLD_TEXT : TEXT);
+    }
+
+    /** Draws a scaled item, cut off at the given box so big 3D models can't spill over other parts. */
+    private static void drawClipped(GuiGraphics g, ItemStack stack, int x, int y, float scale, int x1, int y1, int x2, int y2) {
+        g.enableScissor(x1, y1, x2, y2);
+        drawScaledItem(g, stack, x, y, scale);
+        g.disableScissor();
     }
 
     private static void drawScaledItem(GuiGraphics g, ItemStack stack, int x, int y, float scale) {
