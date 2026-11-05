@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "cobbleupgrader",
+  "version": "${version}",
+  "name": "Cobble Upgrader",
+  "description": "Gamble your items AND the Pokémon in your party or PC for a shot at something better. Open it with /upgrader.",
+  "authors": ["itsastronuts"],
+  "contact": {
+    "sources": "https://github.com/itsastronuts/cobblemon-upgrader"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.itsastronuts.cobbleupgrader.CobbleUpgrader"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "fabric-language-kotlin": "*",
+    "cobblemon": ">=1.8.0"
+  }
+}
