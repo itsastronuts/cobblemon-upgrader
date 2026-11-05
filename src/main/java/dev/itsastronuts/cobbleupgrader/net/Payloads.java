@@ -19,7 +19,7 @@ public final class Payloads {
     private Payloads() {
     }
 
-    private static <T extends CustomPacketPayload> CustomPacketPayload.Type<T> type(String name) {
+    private static <T extends CustomPacketPayload> CustomPacketPayload.Type<T> payloadType(String name) {
         return new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(CobbleUpgrader.MOD_ID, name));
     }
 
@@ -95,7 +95,7 @@ public final class Payloads {
     /** Everything the screen shows. Sent when it opens and again after each spin. */
     public record Data(boolean open, Settings settings, List<PartyMon> party, Map<String, Double> items,
                        List<String> species, List<Double> speciesBase) implements CustomPacketPayload {
-        public static final Type<Data> TYPE = type("data");
+        public static final Type<Data> TYPE = payloadType("data");
         public static final StreamCodec<RegistryFriendlyByteBuf, Data> CODEC = StreamCodec.of((buf, p) -> p.write(buf), Data::read);
 
         void write(FriendlyByteBuf buf) {
@@ -142,7 +142,7 @@ public final class Payloads {
 
     /** The spin started: where the needle will land and how long it takes. */
     public record Spin(float landingDegrees, int ticks, double chance) implements CustomPacketPayload {
-        public static final Type<Spin> TYPE = type("spin");
+        public static final Type<Spin> TYPE = payloadType("spin");
         public static final StreamCodec<RegistryFriendlyByteBuf, Spin> CODEC = StreamCodec.of(
                 (buf, p) -> {
                     buf.writeFloat(p.landingDegrees);
@@ -158,7 +158,7 @@ public final class Payloads {
     }
 
     public record Result(boolean won, String message) implements CustomPacketPayload {
-        public static final Type<Result> TYPE = type("result");
+        public static final Type<Result> TYPE = payloadType("result");
         public static final StreamCodec<RegistryFriendlyByteBuf, Result> CODEC = StreamCodec.of(
                 (buf, p) -> {
                     buf.writeBoolean(p.won);
@@ -173,7 +173,7 @@ public final class Payloads {
     }
 
     public record Error(String message) implements CustomPacketPayload {
-        public static final Type<Error> TYPE = type("error");
+        public static final Type<Error> TYPE = payloadType("error");
         public static final StreamCodec<RegistryFriendlyByteBuf, Error> CODEC = StreamCodec.of(
                 (buf, p) -> buf.writeUtf(p.message),
                 buf -> new Error(buf.readUtf()));
@@ -191,7 +191,7 @@ public final class Payloads {
      */
     public record Upgrade(UUID bet, int targetKind, String targetId, int targetAmount, boolean shiny)
             implements CustomPacketPayload {
-        public static final Type<Upgrade> TYPE = type("upgrade");
+        public static final Type<Upgrade> TYPE = payloadType("upgrade");
         public static final StreamCodec<RegistryFriendlyByteBuf, Upgrade> CODEC = StreamCodec.of(
                 (buf, p) -> {
                     buf.writeUUID(p.bet);
@@ -210,7 +210,7 @@ public final class Payloads {
 
     public record Close() implements CustomPacketPayload {
         public static final Close INSTANCE = new Close();
-        public static final Type<Close> TYPE = type("close");
+        public static final Type<Close> TYPE = payloadType("close");
         public static final StreamCodec<RegistryFriendlyByteBuf, Close> CODEC = StreamCodec.unit(INSTANCE);
 
         @Override

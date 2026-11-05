@@ -38,7 +38,7 @@ chance = (value of your bet / value of the target) x houseEdge      (capped at m
 
 With the default house edge of 0.9 you lose about 10% of your value on average.
 If the chance would be below `minChance` (0.1%), the upgrade is **refused** rather than rounded up, so you can't
-bet a level 2 Magikarp for a Master Ball.
+bet a Magikarp for a shiny Mewtwo.
 
 **Pokémon value** = species base value × level × shiny × IVs
 

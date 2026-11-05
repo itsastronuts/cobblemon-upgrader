@@ -145,11 +145,11 @@ public class CobbleUpgrader implements ModInitializer {
         OPEN.remove(menu);
     }
 
-    static void markSpin(ServerPlayer player) {
+    public static void markSpin(ServerPlayer player) {
         LAST_SPIN.put(player.getUUID(), System.currentTimeMillis());
     }
 
-    static long cooldownLeftMs(ServerPlayer player) {
+    public static long cooldownLeftMs(ServerPlayer player) {
         Long last = LAST_SPIN.get(player.getUUID());
         if (last == null) return 0;
         return Math.max(0, last + UpgraderConfig.get().cooldownSeconds * 1000L - System.currentTimeMillis());
