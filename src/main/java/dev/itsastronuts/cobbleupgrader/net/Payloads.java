@@ -37,7 +37,9 @@ public final class Payloads {
     /** The settings the screen needs to show the same odds and values as the server. */
     public record Settings(double houseEdge, double minChance, double maxChance, int minLevel, int maxLevel,
                            double levelWeight, double shinyMultiplier, boolean allowItemTargets,
-                           boolean allowPokemonTargets, boolean allowShiny, boolean confirmBets, int spinTicks) {
+                           boolean allowPokemonTargets, boolean allowShiny, boolean confirmBets, int spinTicks,
+                           boolean allowPokemonBets, boolean allowInventoryBets, double defaultItemValue,
+                           double uncommonMultiplier, double rareMultiplier, double epicMultiplier) {
         void write(FriendlyByteBuf buf) {
             buf.writeDouble(houseEdge);
             buf.writeDouble(minChance);
@@ -51,12 +53,19 @@ public final class Payloads {
             buf.writeBoolean(allowShiny);
             buf.writeBoolean(confirmBets);
             buf.writeVarInt(spinTicks);
+            buf.writeBoolean(allowPokemonBets);
+            buf.writeBoolean(allowInventoryBets);
+            buf.writeDouble(defaultItemValue);
+            buf.writeDouble(uncommonMultiplier);
+            buf.writeDouble(rareMultiplier);
+            buf.writeDouble(epicMultiplier);
         }
 
         static Settings read(FriendlyByteBuf buf) {
             return new Settings(buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readVarInt(), buf.readVarInt(),
                     buf.readDouble(), buf.readDouble(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean(),
-                    buf.readBoolean(), buf.readVarInt());
+                    buf.readBoolean(), buf.readVarInt(), buf.readBoolean(), buf.readBoolean(), buf.readDouble(),
+                    buf.readDouble(), buf.readDouble(), buf.readDouble());
         }
     }
 
@@ -94,7 +103,8 @@ public final class Payloads {
 
     /** Everything the screen shows. Sent when it opens and again after each spin. */
     public record Data(boolean open, Settings settings, List<PartyMon> party, Map<String, Double> items,
-                       List<String> species, List<Double> speciesBase) implements CustomPacketPayload {
+                       List<String> species, List<Double> speciesBase, Map<String, Double> prices,
+                       List<String> blacklist) implements CustomPacketPayload {
         public static final Type<Data> TYPE = payloadType("data");
         public static final StreamCodec<RegistryFriendlyByteBuf, Data> CODEC = StreamCodec.of((buf, p) -> p.write(buf), Data::read);
 
@@ -113,6 +123,13 @@ public final class Payloads {
                 buf.writeUtf(species.get(i));
                 buf.writeDouble(speciesBase.get(i));
             }
+            buf.writeVarInt(prices.size());
+            prices.forEach((id, value) -> {
+                buf.writeUtf(id);
+                buf.writeDouble(value);
+            });
+            buf.writeVarInt(blacklist.size());
+            for (String id : blacklist) buf.writeUtf(id);
         }
 
         static Data read(FriendlyByteBuf buf) {
@@ -131,7 +148,13 @@ public final class Payloads {
                 species.add(buf.readUtf());
                 base.add(buf.readDouble());
             }
-            return new Data(open, settings, party, items, species, base);
+            n = buf.readVarInt();
+            Map<String, Double> prices = new LinkedHashMap<>();
+            for (int i = 0; i < n; i++) prices.put(buf.readUtf(), buf.readDouble());
+            n = buf.readVarInt();
+            List<String> blacklist = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) blacklist.add(buf.readUtf());
+            return new Data(open, settings, party, items, species, base, prices, blacklist);
         }
 
         @Override
@@ -187,20 +210,28 @@ public final class Payloads {
     // ---- Client -> server ----------------------------------------------------------------
 
     /**
-     * Press of the UPGRADE button. targetKind: 0 = Pokémon (targetAmount = level), 1 = item (targetAmount = count).
+     * Press of the UPGRADE button.
+     * betKind: 0 = Pokémon from the party (bet), 1 = items from inventory slot (slot, itemId, amount).
+     * targetKind: 0 = Pokémon (targetAmount = level), 1 = item (targetAmount = count).
      */
-    public record Upgrade(UUID bet, int targetKind, String targetId, int targetAmount, boolean shiny)
+    public record Upgrade(int betKind, UUID bet, int slot, String itemId, int amount,
+                          int targetKind, String targetId, int targetAmount, boolean shiny)
             implements CustomPacketPayload {
         public static final Type<Upgrade> TYPE = payloadType("upgrade");
         public static final StreamCodec<RegistryFriendlyByteBuf, Upgrade> CODEC = StreamCodec.of(
                 (buf, p) -> {
+                    buf.writeVarInt(p.betKind);
                     buf.writeUUID(p.bet);
+                    buf.writeVarInt(p.slot);
+                    buf.writeUtf(p.itemId);
+                    buf.writeVarInt(p.amount);
                     buf.writeVarInt(p.targetKind);
                     buf.writeUtf(p.targetId);
                     buf.writeVarInt(p.targetAmount);
                     buf.writeBoolean(p.shiny);
                 },
-                buf -> new Upgrade(buf.readUUID(), buf.readVarInt(), buf.readUtf(), buf.readVarInt(), buf.readBoolean()));
+                buf -> new Upgrade(buf.readVarInt(), buf.readUUID(), buf.readVarInt(), buf.readUtf(), buf.readVarInt(),
+                        buf.readVarInt(), buf.readUtf(), buf.readVarInt(), buf.readBoolean()));
 
         @Override
         public Type<? extends CustomPacketPayload> type() {

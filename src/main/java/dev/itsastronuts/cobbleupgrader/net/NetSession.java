@@ -90,10 +90,6 @@ public final class NetSession {
         if (spinning) return;
         UpgraderConfig c = UpgraderConfig.get();
 
-        if (!c.allowPokemonBets) {
-            error("Pokémon bets are turned off.");
-            return;
-        }
         long wait = CobbleUpgrader.cooldownLeftMs(player);
         if (wait > 0) {
             error("Wait " + (wait / 1000 + 1) + "s before the next upgrade.");
@@ -104,16 +100,48 @@ public final class NetSession {
             return;
         }
 
-        // The bet: a Pokémon from the party
-        Pokemon pokemon = UpgradeLogic.findPokemon(player, request.bet(), false);
-        if (pokemon == null) {
-            error("That Pokémon is no longer in your party.");
-            return;
-        }
-        String unusable = UpgradeLogic.pokemonUnusable(pokemon);
-        if (unusable != null) {
-            error(unusable);
-            return;
+        // The bet: a Pokémon from the party, or items from the inventory
+        Pokemon pokemon = null;
+        Item betItem = null;
+        double betValue;
+        if (request.betKind() == 0) {
+            if (!c.allowPokemonBets) {
+                error("Pokémon bets are turned off.");
+                return;
+            }
+            pokemon = UpgradeLogic.findPokemon(player, request.bet(), false);
+            if (pokemon == null) {
+                error("That Pokémon is no longer in your party.");
+                return;
+            }
+            String unusable = UpgradeLogic.pokemonUnusable(pokemon);
+            if (unusable != null) {
+                error(unusable);
+                return;
+            }
+            betValue = Values.pokemonValue(pokemon);
+        } else {
+            if (!c.allowInventoryBets) {
+                error("Item bets are turned off.");
+                return;
+            }
+            ResourceLocation id = ResourceLocation.tryParse(request.itemId());
+            betItem = id == null || !BuiltInRegistries.ITEM.containsKey(id) ? null : BuiltInRegistries.ITEM.get(id);
+            int slot = request.slot();
+            if (betItem == null || slot < 0 || slot >= 36 || request.amount() <= 0) {
+                error("Those items are no longer in your inventory.");
+                return;
+            }
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (!stack.is(betItem) || stack.getCount() < request.amount()) {
+                error("Those items are no longer in your inventory.");
+                return;
+            }
+            if (Values.isItemBlacklisted(betItem)) {
+                error("That item can't be used in the upgrader.");
+                return;
+            }
+            betValue = Values.itemValue(betItem) * request.amount();
         }
 
         // The prize
@@ -151,19 +179,25 @@ public final class NetSession {
             targetValue = Values.itemValue(item) * prizeCount;
         }
 
-        double betValue = Values.pokemonValue(pokemon);
         if (Values.chanceTooLow(betValue, targetValue)) {
-            error("That target is too valuable for this Pokémon.");
+            error("That target is too valuable for this bet.");
             return;
         }
         chance = Values.chance(betValue, targetValue);
 
-        if (!UpgradeLogic.takePokemon(player, pokemon, false)) {
-            error("Couldn't take that Pokémon, nothing was lost.");
-            return;
+        if (pokemon != null) {
+            if (!UpgradeLogic.takePokemon(player, pokemon, false)) {
+                error("Couldn't take that Pokémon, nothing was lost.");
+                return;
+            }
+            CobbleUpgrader.LOGGER.info("{} bet {} (lv {}, shiny {}, value {}) at {}", player.getGameProfile().getName(),
+                    pokemon.getSpecies().getName(), pokemon.getLevel(), pokemon.getShiny(), betValue, Values.percent(chance));
+        } else {
+            if (!UpgradeLogic.takeItems(player, request.slot(), betItem, request.amount())) {
+                error("Those items are no longer in your inventory.");
+                return;
+            }
         }
-        CobbleUpgrader.LOGGER.info("{} bet {} (lv {}, shiny {}, value {}) at {}", player.getGameProfile().getName(),
-                pokemon.getSpecies().getName(), pokemon.getLevel(), pokemon.getShiny(), betValue, Values.percent(chance));
         CobbleUpgrader.markSpin(player);
 
         won = player.getRandom().nextDouble() < chance;
@@ -176,7 +210,7 @@ public final class NetSession {
         ticksLeft = c.spinTicks;
         spinning = true;
         ServerPlayNetworking.send(player, new Payloads.Spin(landing, c.spinTicks, chance));
-        // The Pokémon is gone from the party now; refresh the list right away.
+        // The bet is gone now; refresh the screen's data right away.
         sendData(false);
     }
 
@@ -229,7 +263,8 @@ public final class NetSession {
         UpgraderConfig c = UpgraderConfig.get();
         Payloads.Settings settings = new Payloads.Settings(c.houseEdge, c.minChance, c.maxChance, c.minTargetLevel,
                 c.maxTargetLevel, c.levelWeight, c.shinyMultiplier, c.allowItemTargets, c.allowPokemonTargets,
-                c.allowShinyTargets, c.confirmPokemonBets, c.spinTicks);
+                c.allowShinyTargets, c.confirmPokemonBets, c.spinTicks, c.allowPokemonBets, c.allowInventoryBets,
+                c.defaultItemValue, c.uncommonItemMultiplier, c.rareItemMultiplier, c.epicItemMultiplier);
 
         List<Payloads.PartyMon> party = new ArrayList<>();
         PlayerPartyStore store = UpgradeLogic.party(player);
@@ -256,6 +291,7 @@ public final class NetSession {
                 base.add(Values.speciesBaseValue(s));
             }
         }
-        ServerPlayNetworking.send(player, new Payloads.Data(open, settings, party, items, species, base));
+        ServerPlayNetworking.send(player, new Payloads.Data(open, settings, party, items, species, base,
+                new LinkedHashMap<>(c.itemPrices), new ArrayList<>(c.blacklistedItems)));
     }
 }

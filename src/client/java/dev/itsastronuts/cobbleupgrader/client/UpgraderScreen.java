@@ -34,7 +34,7 @@ import java.util.UUID;
 /** The upgrader screen: your Pokémon on the left, the chance dial in the middle, the prize on the right. */
 public class UpgraderScreen extends Screen {
     // Window
-    private static final int W = 300, H = 232;
+    private static final int W = 300, H = 262;
     // Colours
     private static final int FRAME = 0xF0121620, FRAME_EDGE = 0xFF3A4357, FRAME_HI = 0xFF262D3D;
     private static final int PANEL_EDGE = 0xFF353D52, SLOT = 0xFF1A1F2B, SLOT_EDGE = 0xFF2E3547;
@@ -47,7 +47,12 @@ public class UpgraderScreen extends Screen {
     private final Map<String, ItemStack> iconCache = new HashMap<>();
 
     // Selection
-    private UUID bet;
+    private UUID bet;            // Pokémon bet (party)
+    private int betKind = -1;    // -1 none, 0 Pokémon, 1 items
+    private int betSlot = -1;    // inventory slot (0-8 hotbar, 9-35 inventory)
+    private Item betItem;
+    private int betAmount;
+    private int bottomTab;       // 0 party, 1 inventory
     private int targetKind = -1; // -1 none, 0 Pokémon, 1 item
     private String targetId;
     private int targetAmount = 1;
@@ -80,6 +85,7 @@ public class UpgraderScreen extends Screen {
     private List<String> filtered = List.of();
 
     private boolean draggingSlider;
+    private boolean draggingBetSlider;
     private int left, top;
 
     public UpgraderScreen(Payloads.Data data) {
@@ -91,7 +97,7 @@ public class UpgraderScreen extends Screen {
 
     public void updateData(Payloads.Data newData) {
         this.data = newData;
-        if (bet != null && findMon(bet) == null) bet = null;
+        if (betKind == 0 && (bet == null || findMon(bet) == null)) clearBet();
         refilter();
     }
 
@@ -104,9 +110,15 @@ public class UpgraderScreen extends Screen {
         spinChance = spin.chance();
         resultWon = null;
         spinBet = bet;
-        Payloads.PartyMon mon = bet == null ? null : findMon(bet);
-        spinBetIcon = mon == null ? ItemStack.EMPTY : monIcon(mon);
-        bet = null;
+        if (betKind == 0) {
+            Payloads.PartyMon mon = bet == null ? null : findMon(bet);
+            spinBetIcon = mon == null ? ItemStack.EMPTY : monIcon(mon);
+        } else if (betKind == 1) {
+            spinBetIcon = new ItemStack(betItem, Math.max(1, Math.min(99, betAmount)));
+        } else {
+            spinBetIcon = ItemStack.EMPTY;
+        }
+        clearBet();
         confirming = false;
         catalogOpen = false;
     }
@@ -165,8 +177,62 @@ public class UpgraderScreen extends Screen {
     // ---- Values (same formulas as the server) --------------------------------------------
 
     private double betValue() {
-        Payloads.PartyMon mon = bet == null ? null : findMon(bet);
-        return mon == null ? 0 : mon.value();
+        if (betKind == 0) {
+            Payloads.PartyMon mon = bet == null ? null : findMon(bet);
+            return mon == null ? 0 : mon.value();
+        }
+        if (betKind == 1 && betItem != null) return itemValue(betItem) * betAmount;
+        return 0;
+    }
+
+    /** Same as the server's item price: fixed price from the config, otherwise default x rarity. */
+    private double itemValue(Item item) {
+        Double price = data.prices().get(BuiltInRegistries.ITEM.getKey(item).toString());
+        if (price != null) return price;
+        Payloads.Settings st = data.settings();
+        double mult = switch (new ItemStack(item).getRarity()) {
+            case UNCOMMON -> st.uncommonMultiplier();
+            case RARE -> st.rareMultiplier();
+            case EPIC -> st.epicMultiplier();
+            default -> 1.0;
+        };
+        return st.defaultItemValue() * mult;
+    }
+
+    private boolean itemBlocked(Item item) {
+        return item == Items.AIR || item instanceof net.minecraft.world.item.SpawnEggItem
+                || data.blacklist().contains(BuiltInRegistries.ITEM.getKey(item).toString());
+    }
+
+    private boolean hasBet() {
+        if (betKind == 0) return bet != null && findMon(bet) != null;
+        return betKind == 1 && betItem != null && betAmount > 0;
+    }
+
+    private void clearBet() {
+        betKind = -1;
+        bet = null;
+        betSlot = -1;
+        betItem = null;
+        betAmount = 0;
+    }
+
+    /** Keeps an item bet in step with the real inventory (the stack may have moved or shrunk). */
+    private void syncItemBet() {
+        if (betKind != 1 || minecraft == null || minecraft.player == null) return;
+        ItemStack stack = minecraft.player.getInventory().getItem(betSlot);
+        if (!stack.is(betItem)) {
+            clearBet();
+            return;
+        }
+        betAmount = Math.max(1, Math.min(stack.getCount(), betAmount));
+    }
+
+    private void setBetAmount(int amount) {
+        if (betKind != 1) return;
+        int max = minecraft.player.getInventory().getItem(betSlot).getCount();
+        betAmount = Math.max(1, Math.min(max, amount));
+        confirming = false;
     }
 
     private double targetValue() {
@@ -219,8 +285,8 @@ public class UpgraderScreen extends Screen {
             showMessage("Pick a target first.", GOLD_TEXT);
             return;
         }
-        if (bet == null) {
-            showMessage("Pick a Pokémon to bet first.", GOLD_TEXT);
+        if (!hasBet()) {
+            showMessage("Pick something to bet first.", GOLD_TEXT);
             return;
         }
         if (targetKind == 0) {
@@ -273,7 +339,8 @@ public class UpgraderScreen extends Screen {
         // ---- Bet panel (left)
         int bx = left + 10, by = top + 24;
         drawPanel(g, bx, by);
-        Payloads.PartyMon betMon = bet == null ? null : findMon(bet);
+        syncItemBet();
+        Payloads.PartyMon betMon = betKind == 0 && bet != null ? findMon(bet) : null;
         if (spinning && !spinBetIcon.isEmpty()) {
             drawClipped(g, spinBetIcon, bx + 45 - 24, by + 14, 3f, bx + 1, by + 1, bx + 89, by + 66);
             g.drawCenteredString(font, "In the wheel...", bx + 45, by + 70, MUTED);
@@ -284,15 +351,31 @@ public class UpgraderScreen extends Screen {
             g.drawCenteredString(font, "Lv " + betMon.level(), bx + 45, by + 71, MUTED);
             g.drawCenteredString(font, "Value: " + Values.format(betMon.value()), bx + 45, by + 82, GOLD_TEXT);
             if (inside(mx, my, bx, by, 90, 96)) tooltip = monTooltip(betMon, "Click to take it back out.");
+        } else if (betKind == 1) {
+            ItemStack shown = new ItemStack(betItem);
+            drawClipped(g, shown, bx + 45 - 16, by + 6, 2f, bx + 1, by + 1, bx + 89, by + 40);
+            g.drawCenteredString(font, fit(shown.getHoverName().getString(), 84), bx + 45, by + 41, TEXT);
+            g.drawCenteredString(font, "Value: " + Values.format(betValue()), bx + 45, by + 51, GOLD_TEXT);
+            g.drawCenteredString(font, "Amount", bx + 45, by + 62, MUTED);
+            drawSmallButton(g, bx + 8, by + 71, 12, 11, "-", mx, my, true);
+            drawSmallButton(g, bx + 70, by + 71, 12, 11, "+", mx, my, true);
+            g.drawCenteredString(font, String.valueOf(betAmount), bx + 45, by + 73, GOLD_TEXT);
+            int max = minecraft.player.getInventory().getItem(betSlot).getCount();
+            drawBar(g, bx + 8, by + 86, 74, max <= 1 ? 1 : (betAmount - 1) / (double) (max - 1));
+            if (tooltip == null && inside(mx, my, bx + 20, by + 4, 50, 46)) {
+                tooltip = List.of(shown.getHoverName(),
+                        Component.literal(Values.format(itemValue(betItem)) + " each").withStyle(ChatFormatting.YELLOW),
+                        Component.literal("Click to take it back out").withStyle(ChatFormatting.DARK_GRAY));
+            }
         } else {
             g.drawCenteredString(font, "Your bet", bx + 45, by + 34, TEXT);
             g.drawCenteredString(font, "Pick a Pokémon", bx + 45, by + 50, MUTED);
-            g.drawCenteredString(font, "from your party", bx + 45, by + 60, MUTED);
+            g.drawCenteredString(font, "or items below", bx + 45, by + 60, MUTED);
         }
 
         // ---- Chance dial (middle)
         int rx = left + 102, ry = top + 24;
-        double shownChance = spinning ? spinChance : (bet != null && targetKind >= 0 ? chance() : -1);
+        double shownChance = spinning ? spinChance : (hasBet() && targetKind >= 0 ? chance() : -1);
         if (resultWon != null && !spinning && System.currentTimeMillis() - resultAt < 2500) shownChance = spinChance;
         Textures.updateRing(shownChance);
         RenderSystem.enableBlend();
@@ -350,22 +433,54 @@ public class UpgraderScreen extends Screen {
                     : "Set the prize so your chance is about " + labels[i]));
         }
 
-        // ---- Party
-        g.drawString(font, "Your party", left + 10, top + 156, MUTED, false);
-        for (int slot = 0; slot < 6; slot++) {
-            int sx = left + 9 + slot * 46, sy = top + 167;
-            Payloads.PartyMon mon = monInSlot(slot);
-            boolean selected = mon != null && mon.uuid().equals(bet);
-            boolean hover = inside(mx, my, sx, sy, 42, 42);
-            boolean blocked = mon != null && !mon.blocked().isEmpty();
-            g.fill(sx, sy, sx + 42, sy + 42, selected ? 0xFF3A2E12 : hover && mon != null ? 0xFF242B3B : SLOT);
-            g.renderOutline(sx, sy, 42, 42, selected ? GOLD : blocked ? 0xFF5A2A30 : SLOT_EDGE);
-            if (mon != null) {
-                drawClipped(g, monIcon(mon), sx + 5, sy + 3, 2f, sx + 1, sy + 1, sx + 41, sy + 41);
-                g.drawString(font, "Lv" + mon.level(), sx + 3, sy + 32, blocked ? 0xFF9A6A6A : TEXT, true);
-                if (mon.shiny()) g.drawString(font, "★", sx + 34, sy + 3, GOLD_TEXT, true);
-                if (blocked) g.fill(sx + 1, sy + 1, sx + 41, sy + 41, 0x70100808);
-                if (hover) tooltip = monTooltip(mon, blocked ? null : selected ? "Selected" : "Click to bet this Pokémon");
+        // ---- Bottom: party / inventory tabs
+        boolean pokemonBets = data.settings().allowPokemonBets(), itemBets = data.settings().allowInventoryBets();
+        if (!pokemonBets && itemBets) bottomTab = 1;
+        if (!itemBets) bottomTab = 0;
+        drawTab(g, left + 10, top + 154, 54, "Party", bottomTab == 0, pokemonBets, mx, my);
+        drawTab(g, left + 68, top + 154, 64, "Inventory", bottomTab == 1, itemBets, mx, my);
+        if (bottomTab == 0) {
+            for (int slot = 0; slot < 6; slot++) {
+                int sx = left + 9 + slot * 46, sy = top + 186;
+                Payloads.PartyMon mon = monInSlot(slot);
+                boolean selected = mon != null && betKind == 0 && mon.uuid().equals(bet);
+                boolean hover = inside(mx, my, sx, sy, 42, 42);
+                boolean blocked = mon != null && !mon.blocked().isEmpty();
+                g.fill(sx, sy, sx + 42, sy + 42, selected ? 0xFF3A2E12 : hover && mon != null ? 0xFF242B3B : SLOT);
+                g.renderOutline(sx, sy, 42, 42, selected ? GOLD : blocked ? 0xFF5A2A30 : SLOT_EDGE);
+                if (mon != null) {
+                    drawClipped(g, monIcon(mon), sx + 5, sy + 3, 2f, sx + 1, sy + 1, sx + 41, sy + 41);
+                    g.drawString(font, "Lv" + mon.level(), sx + 3, sy + 32, blocked ? 0xFF9A6A6A : TEXT, true);
+                    if (mon.shiny()) g.drawString(font, "★", sx + 34, sy + 3, GOLD_TEXT, true);
+                    if (blocked) g.fill(sx + 1, sy + 1, sx + 41, sy + 41, 0x70100808);
+                    if (hover) tooltip = monTooltip(mon, blocked ? null : selected ? "Selected" : "Click to bet this Pokémon");
+                }
+            }
+        } else {
+            for (int i = 0; i < 36; i++) {
+                int invSlot = invSlotAt(i);
+                int sx = invX(i), sy = invY(i);
+                ItemStack stack = minecraft.player.getInventory().getItem(invSlot);
+                boolean selected = betKind == 1 && betSlot == invSlot;
+                boolean hover = inside(mx, my, sx, sy, 18, 18);
+                boolean blocked = !stack.isEmpty() && itemBlocked(stack.getItem());
+                g.fill(sx, sy, sx + 18, sy + 18, selected ? 0xFF3A2E12 : hover && !stack.isEmpty() ? 0xFF2C3446 : SLOT);
+                g.renderOutline(sx, sy, 18, 18, selected ? GOLD : SLOT_EDGE);
+                if (stack.isEmpty()) continue;
+                g.renderItem(stack, sx + 1, sy + 1);
+                g.renderItemDecorations(font, stack, sx + 1, sy + 1);
+                if (blocked) g.fill(sx + 1, sy + 1, sx + 17, sy + 17, 0x90100808);
+                if (hover) {
+                    List<Component> lines = new ArrayList<>();
+                    lines.add(stack.getHoverName());
+                    if (blocked) {
+                        lines.add(Component.literal("Can't be used in the upgrader").withStyle(ChatFormatting.RED));
+                    } else {
+                        lines.add(Component.literal("Value: " + Values.format(itemValue(stack.getItem())) + " each").withStyle(ChatFormatting.YELLOW));
+                        lines.add(Component.literal("Left-click: bet the stack · Right-click: bet one").withStyle(ChatFormatting.DARK_GRAY));
+                    }
+                    tooltip = lines;
+                }
             }
         }
 
@@ -424,7 +539,7 @@ public class UpgraderScreen extends Screen {
             g.drawCenteredString(font, "spinning...", cx, cy + 6, MUTED);
         } else if (resultWon != null && sinceResult < 2500) {
             drawBig(g, resultWon ? "SUCCESS!" : "FAILED", cx, cy - 6, resultWon ? GREEN : RED);
-        } else if (bet != null && targetKind >= 0) {
+        } else if (hasBet() && targetKind >= 0) {
             if (tooLow()) {
                 drawBig(g, "< " + Values.percent(data.settings().minChance()), cx, cy - 9, RED);
                 g.drawCenteredString(font, "too low", cx, cy + 6, MUTED);
@@ -451,7 +566,10 @@ public class UpgraderScreen extends Screen {
 
     private void drawSlider(GuiGraphics g, int x, int y, int w) {
         int min = minAmount(), max = maxAmount();
-        double t = max <= min ? 1 : (targetAmount - min) / (double) (max - min);
+        drawBar(g, x, y, w, max <= min ? 1 : (targetAmount - min) / (double) (max - min));
+    }
+
+    private void drawBar(GuiGraphics g, int x, int y, int w, double t) {
         int fillTo = x + (int) Math.round(w * t);
         g.fill(x, y, x + w, y + 4, 0xFF2A3042);
         g.fillGradient(x, y, fillTo, y + 4, GOLD_TEXT, GOLD_DARK);
@@ -461,7 +579,7 @@ public class UpgraderScreen extends Screen {
 
     private void drawUpgradeButton(GuiGraphics g, int x, int y, int w, int h, int mx, int my) {
         boolean hover = inside(mx, my, x, y, w, h);
-        boolean ready = !spinning && bet != null && targetKind >= 0 && !tooLow();
+        boolean ready = !spinning && hasBet() && targetKind >= 0 && !tooLow();
         int cTop, cBottom, edge, text;
         String label;
         if (confirming) {
@@ -593,9 +711,28 @@ public class UpgraderScreen extends Screen {
         boolean wasConfirming = confirming;
         confirming = false;
 
-        // Bet panel: take the Pokémon back out
-        if (inside(mx, my, left + 10, top + 24, 90, 96) && bet != null) {
-            bet = null;
+        // Bet panel: amount buttons for items, otherwise click to take the bet back out
+        int bx = left + 10, by = top + 24;
+        if (betKind == 1) {
+            int step = hasShiftDown() ? 10 : 1;
+            if (inside(mx, my, bx + 8, by + 71, 12, 11)) {
+                setBetAmount(betAmount - step);
+                click();
+                return true;
+            }
+            if (inside(mx, my, bx + 70, by + 71, 12, 11)) {
+                setBetAmount(betAmount + step);
+                click();
+                return true;
+            }
+            if (inside(mx, my, bx + 6, by + 82, 78, 12)) {
+                draggingBetSlider = true;
+                dragBetSlider(mx);
+                return true;
+            }
+        }
+        if (inside(mx, my, bx, by, 90, 96) && hasBet()) {
+            clearBet();
             click();
             return true;
         }
@@ -651,17 +788,52 @@ public class UpgraderScreen extends Screen {
                 return true;
             }
         }
-        // Party
-        for (int slot = 0; slot < 6; slot++) {
-            if (inside(mx, my, left + 9 + slot * 46, top + 167, 42, 42)) {
-                Payloads.PartyMon mon = monInSlot(slot);
-                if (mon == null) return true;
-                if (!mon.blocked().isEmpty()) {
-                    showMessage(mon.blocked(), RED);
-                } else {
-                    bet = mon.uuid().equals(bet) ? null : mon.uuid();
-                    click();
+        // Bottom tabs
+        if (inside(mx, my, left + 10, top + 154, 54, 14) && data.settings().allowPokemonBets()) {
+            bottomTab = 0;
+            click();
+            return true;
+        }
+        if (inside(mx, my, left + 68, top + 154, 64, 14) && data.settings().allowInventoryBets()) {
+            bottomTab = 1;
+            click();
+            return true;
+        }
+        if (bottomTab == 0) {
+            for (int slot = 0; slot < 6; slot++) {
+                if (inside(mx, my, left + 9 + slot * 46, top + 186, 42, 42)) {
+                    Payloads.PartyMon mon = monInSlot(slot);
+                    if (mon == null) return true;
+                    if (!mon.blocked().isEmpty()) {
+                        showMessage(mon.blocked(), RED);
+                    } else if (betKind == 0 && mon.uuid().equals(bet)) {
+                        clearBet();
+                        click();
+                    } else {
+                        clearBet();
+                        betKind = 0;
+                        bet = mon.uuid();
+                        click();
+                    }
+                    return true;
                 }
+            }
+        } else {
+            for (int i = 0; i < 36; i++) {
+                if (!inside(mx, my, invX(i), invY(i), 18, 18)) continue;
+                int invSlot = invSlotAt(i);
+                ItemStack stack = minecraft.player.getInventory().getItem(invSlot);
+                if (stack.isEmpty()) return true;
+                if (itemBlocked(stack.getItem())) {
+                    showMessage("That item can't be used in the upgrader.", RED);
+                    return true;
+                }
+                clearBet();
+                betKind = 1;
+                betSlot = invSlot;
+                betItem = stack.getItem();
+                betAmount = button == 1 ? 1 : stack.getCount();
+                click();
                 return true;
             }
         }
@@ -670,8 +842,8 @@ public class UpgraderScreen extends Screen {
 
     private void pressUpgrade(boolean wasConfirming) {
         if (spinning) return;
-        if (bet == null) {
-            showMessage("Pick a Pokémon from your party to bet.", GOLD_TEXT);
+        if (!hasBet()) {
+            showMessage("Pick a Pokémon or items to bet.", GOLD_TEXT);
             return;
         }
         if (targetKind < 0) {
@@ -679,15 +851,18 @@ public class UpgraderScreen extends Screen {
             return;
         }
         if (tooLow()) {
-            showMessage("That prize is too valuable for this Pokémon. Lower it or bet something stronger.", RED);
+            showMessage("That prize is too valuable for this bet. Lower it or bet something worth more.", RED);
             return;
         }
-        if (data.settings().confirmBets() && !wasConfirming) {
+        if (betKind == 0 && data.settings().confirmBets() && !wasConfirming) {
             confirming = true;
             minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BASS.value(), 0.8f));
             return;
         }
-        ClientPlayNetworking.send(new Payloads.Upgrade(bet, targetKind, targetId, targetAmount, targetShiny));
+        UUID mon = betKind == 0 ? bet : new UUID(0, 0);
+        String itemId = betKind == 1 ? BuiltInRegistries.ITEM.getKey(betItem).toString() : "";
+        ClientPlayNetworking.send(new Payloads.Upgrade(betKind, mon, betSlot, itemId, betAmount,
+                targetKind, targetId, targetAmount, targetShiny));
     }
 
     private boolean clickCatalog(int mx, int my, int button) {
@@ -737,13 +912,40 @@ public class UpgraderScreen extends Screen {
             dragSlider((int) mouseX);
             return true;
         }
+        if (draggingBetSlider) {
+            dragBetSlider((int) mouseX);
+            return true;
+        }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         draggingSlider = false;
+        draggingBetSlider = false;
         return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private void dragBetSlider(int mx) {
+        if (betKind != 1) return;
+        int x = left + 18, w = 74;
+        int max = minecraft.player.getInventory().getItem(betSlot).getCount();
+        double t = Math.max(0, Math.min(1, (mx - x) / (double) w));
+        setBetAmount(1 + (int) Math.round(t * (max - 1)));
+    }
+
+    /** Inventory grid: rows 0-2 are the main inventory (slots 9-35), row 3 is the hotbar (0-8). */
+    private static int invSlotAt(int i) {
+        return i < 27 ? i + 9 : i - 27;
+    }
+
+    private int invX(int i) {
+        return left + (W - 9 * 18) / 2 + (i % 9) * 18;
+    }
+
+    private int invY(int i) {
+        int row = i / 9;
+        return top + 172 + row * 18 + (row == 3 ? 4 : 0);
     }
 
     private void dragSlider(int mx) {
@@ -757,6 +959,10 @@ public class UpgraderScreen extends Screen {
         if (catalogOpen) {
             int total = (filtered.size() + 13) / 14;
             catalogScroll = Math.max(0, Math.min(Math.max(0, total - 8), catalogScroll - (int) Math.signum(scrollY)));
+            return true;
+        }
+        if (betKind == 1 && inside((int) mouseX, (int) mouseY, left + 10, top + 24, 90, 96)) {
+            setBetAmount(betAmount + (int) Math.signum(scrollY) * (hasShiftDown() ? 10 : 1));
             return true;
         }
         if (targetKind >= 0 && inside((int) mouseX, (int) mouseY, left + 200, top + 24, 90, 96)) {

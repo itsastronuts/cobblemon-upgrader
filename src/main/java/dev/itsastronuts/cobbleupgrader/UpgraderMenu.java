@@ -204,7 +204,7 @@ public class UpgraderMenu extends ChestMenu {
                 if (c.allowPokemonBets && c.allowPcBets) open(View.PC);
             }
             case S_FROM_INV -> {
-                if (c.allowItemBets) open(View.INVENTORY);
+                if (c.allowInventoryBets) open(View.INVENTORY);
             }
             case S_PICK_POKEMON -> {
                 if (c.allowPokemonTargets) open(View.SPECIES);
@@ -591,7 +591,7 @@ public class UpgraderMenu extends ChestMenu {
         gui.setItem(S_FROM_PC, c.allowPokemonBets && c.allowPcBets
                 ? button(cobblemonItem("pc", Items.ENDER_CHEST), aqua("Bet a Pokémon from your PC"))
                 : disabled("PC bets are turned off"));
-        gui.setItem(S_FROM_INV, c.allowItemBets
+        gui.setItem(S_FROM_INV, c.allowInventoryBets
                 ? button(Items.CHEST, aqua("Bet items from your inventory"))
                 : disabled("Item bets are turned off"));
         gui.setItem(S_PICK_POKEMON, c.allowPokemonTargets

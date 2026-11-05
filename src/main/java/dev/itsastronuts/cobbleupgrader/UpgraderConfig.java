@@ -42,10 +42,10 @@ public final class UpgraderConfig {
     /** Permission level needed for /upgrader (0 = everyone, 2 = operators). */
     public int commandPermissionLevel = 0;
     public boolean allowPokemonBets = true;
-    /** Let Pokémon from the PC be bet too (chest screen only). Off: party only. */
+    /** Let Pokémon from the PC be bet too (chest screen only; the custom screen is party only). */
     public boolean allowPcBets = false;
-    /** Let inventory items be bet (chest screen only). */
-    public boolean allowItemBets = false;
+    /** Let items from your inventory and hotbar be bet. */
+    public boolean allowInventoryBets = true;
     public boolean allowPokemonTargets = true;
     public boolean allowItemTargets = true;
     public boolean allowShinyTargets = true;

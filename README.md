@@ -1,6 +1,6 @@
 # Cobble Upgrader
 
-A Cobblemon add-on that lets you gamble **the Pokémon in your party** for a shot at a better Pokémon or an item.
+A Cobblemon add-on that lets you gamble **the Pokémon in your party or items from your inventory** for a shot at a better Pokémon or an item.
 
 - **Minecraft 1.21.1 · Fabric · Cobblemon 1.8+** (also needs Fabric API and Fabric Language Kotlin, which Cobblemon already requires)
 - Install it on the client (and on the server, if you play on one).
@@ -22,12 +22,13 @@ Gold ingot  | Poké Ball     | Gold ingot
 
 (`/upgrader` opens it too.)
 
-1. **Pick a bet:** click a Pokémon in **Your party** at the bottom.
+1. **Pick a bet:** on the **Party** tab, click a Pokémon. On the **Inventory** tab, click an item (left-click = the whole stack,
+   right-click = one), then fine-tune the amount with − / +, the slider or the mouse wheel on the left panel.
 2. **Pick a prize:** click the right-hand panel, then choose a Pokémon (shift-click for a shiny) or an item. Use the search box to find things.
 3. **Tune it:** set the level or amount with − / +, the slider or the mouse wheel. **×2 / ×4 / ×8** make the prize worth that many times your bet; **30% / 50% / 70%** set the prize so that's your chance.
-4. **Press UPGRADE** (twice: the second click confirms) and watch the dial spin.
+4. **Press UPGRADE** and watch the dial spin. When betting a Pokémon you have to click twice: the second click confirms.
 
-Your Pokémon is used up whether you win or lose. A won Pokémon goes to your party, or to your PC if the party is full.
+Your bet is used up whether you win or lose. A won Pokémon goes to your party, or to your PC if the party is full.
 It gets random IVs, just like a wild catch.
 
 ## Odds
@@ -55,7 +56,7 @@ Items that aren't listed are worth 1 each (×4 uncommon, ×16 rare, ×64 epic). 
 
 ## Rules that protect players
 
-- Only Pokémon in your party can be bet (`allowPcBets` / `allowItemBets` in the config turn on PC and item bets in the fallback chest screen).
+- Pokémon can only be bet from your party, not the PC (`allowPcBets` turns on PC bets in the fallback chest screen). Item bets can be turned off with `allowInventoryBets`.
 - Can't be used during a battle.
 - Pokémon that are untradeable or out in a pasture can't be bet.
 - Closing the screen mid-spin doesn't change anything: the result was decided when you pressed UPGRADE, and you get it right away.
