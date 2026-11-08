@@ -38,13 +38,18 @@ jobs:
             !build/libs/*-sources.jar
 
       - name: Publish "latest" release
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/cobblemon-1.7') && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           JAR=$(ls build/libs/*.jar | grep -v -- '-sources' | head -n 1)
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest "$JAR" \
-            --title "Latest build" \
-            --notes "Built automatically from commit ${GITHUB_SHA::7}. Download the .jar below and put it in your mods folder (Minecraft 1.21.1, Fabric, Cobblemon 1.8+)." \
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            TAG=latest; TITLE="Latest build (Cobblemon 1.8)"; FOR="Cobblemon 1.8+"
+          else
+            TAG=latest-cobblemon-1.7; TITLE="Latest build (Cobblemon 1.7.3)"; FOR="Cobblemon 1.7.x"
+          fi
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" "$JAR" \
+            --title "$TITLE" \
+            --notes "Built automatically from commit ${GITHUB_SHA::7}. Download the .jar below and put it in your mods folder (Minecraft 1.21.1, Fabric, $FOR)." \
             --target "$GITHUB_SHA"
