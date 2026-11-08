@@ -322,15 +322,12 @@ public class UpgraderScreen extends Screen {
         // While the prize picker is open, draw only the picker: the main screen's Pokémon models and text
         // would otherwise show through it.
         if (catalogOpen) {
-            g.pose().pushPose();
-            g.pose().translate(0, 0, 300);
             Object hovered = drawCatalog(g, mouseX, mouseY);
             search.render(g, mouseX, mouseY, delta);
-            g.pose().popPose();
-            if (hovered instanceof ItemStack stack) g.renderTooltip(font, stack, mouseX, mouseY);
+            if (hovered instanceof ItemStack stack) drawTooltip(g, stack, null, mouseX, mouseY);
             else if (hovered instanceof List<?> list) {
                 @SuppressWarnings("unchecked") List<Component> lines = (List<Component>) list;
-                g.renderComponentTooltip(font, lines, mouseX, mouseY);
+                drawTooltip(g, ItemStack.EMPTY, lines, mouseX, mouseY);
             }
             return;
         }
@@ -489,8 +486,7 @@ public class UpgraderScreen extends Screen {
             g.drawCenteredString(font, fit(message, W - 20), left + W / 2, top + H - 12, messageColor);
         }
 
-        if (!tooltipStack.isEmpty()) g.renderTooltip(font, tooltipStack, mouseX, mouseY);
-        else if (tooltip != null) g.renderComponentTooltip(font, tooltip, mouseX, mouseY);
+        drawTooltip(g, tooltipStack, tooltip, mouseX, mouseY);
 
         tickSpinSounds();
     }
@@ -671,6 +667,20 @@ public class UpgraderScreen extends Screen {
         g.fill(x, y, x + w, y + 14, active ? 0xFF3A2E12 : hover ? 0xFF2C3446 : 0xFF202636);
         g.renderOutline(x, y, w, 14, active ? GOLD : SLOT_EDGE);
         g.drawCenteredString(font, label, x + w / 2, y + 3, !enabled ? 0xFF555B6A : active ? GOLD_TEXT : TEXT);
+    }
+
+    /**
+     * Tooltips are pushed far towards the screen: Cobblemon's 3D Pokémon icons have real depth and would
+     * otherwise poke through the tooltip box.
+     */
+    private void drawTooltip(GuiGraphics g, ItemStack stack, List<Component> lines, int mouseX, int mouseY) {
+        if (stack.isEmpty() && lines == null) return;
+        g.flush();
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 1000);
+        if (!stack.isEmpty()) g.renderTooltip(font, stack, mouseX, mouseY);
+        else g.renderComponentTooltip(font, lines, mouseX, mouseY);
+        g.pose().popPose();
     }
 
     /** Draws a scaled item, cut off at the given box so big 3D models can't spill over other parts. */
